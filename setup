@@ -1,0 +1,95 @@
+#!/bin/bash
+
+clear
+setfont Lat2-Terminus16.psfu.gz
+
+# Check if the system booted in UEFI mode
+if [ -d /sys/firmware/efi ]; then
+  UEFI_BOOT=true
+fi
+
+# Do an inital check of the user's keyboard map
+check_keymap() {
+  echo "<SET THE KEYBOARD LAYOUT>"
+  echo
+  echo "The default keyboard layout is US."
+  echo "If you are not using a US keyboard, you should now load a keymap that \
+corresponds to your keyboard layout."
+  echo "To load a different keyboard map, enter 1. To continue using the US \
+keyboard layout, press enter."
+  echo
+  read -p "Enter 1 to select a different keyboard map, otherwise press \
+enter: " CHANGE_KEYMAP
+  if [ "$CHANGE_KEYMAP" = "1" ]; then
+    set_keymap
+  fi
+}
+
+# Proceed with installation only if there is an internet connection
+check_connection() {
+  connected=false
+  while ! $connected; do
+    # Only check that the web page is available, don't download the contents
+    wget -q --spider archlinux.org
+    if [ $? -ne 0 ]; then 
+      dialog --title "Connect to the Internet" \
+        --yesno "The installer was unable to detect a working internet \
+connection. The installation media supports wired network devices on \
+boot. Make sure the cable is plugged in. Wireless users should use the \
+'wifi-menu' command and follow the on-screen instructions to connect to \
+a wireless connection.\n\nWould you like to launch 'wifi-menu' to connect \
+to the internet?\nIf you select No, the installer will exit." 11 80
+      if [ $? -eq 0 ]; then
+        wifi-menu
+      else
+        exit
+      fi
+    else
+      connected=true
+    fi
+  done
+}
+
+# Allow the user to select one of the available keyboard maps
+set_keymap() {
+  keymaps=()
+  for map in $(localectl list-keymaps); do
+    keymaps+=("$map" "")
+  done
+  
+    KEYMAP=$(dialog --title "Set the keyboard layout" \
+      --menu "Select a keymap that corresponds to your keyboard layout. The \
+default is 'us' (QWERTY). Use the UP/DOWN arrow keys and PageUp/PageDown to \
+navigate the list, then press enter to confirm your selection." 30 60 25 \
+"${keymaps[@]}" 3>&1 1>&2 2>&3)
+
+    if [ $? -eq 0 ]; then
+      localectl set-keymap $KEYMAP
+    fi
+}
+
+main() {
+  check_keymap
+  check_connection
+  # Update the system clock
+  timedatectl set-ntp true
+
+  while true; do
+    MENU_CHOICE=$(dialog --title "Arch Linux Installer" \
+      --menu "Select an option below using the UP/DOWN keys and SPACE or \
+ENTER.\nAlternate keys may also be used: '+', '-', and TAB." 18 72 9 \
+"KEYMAP" "Modify your keyboard layout" \
+"EXIT" "Exit Arch Linux Installer" 3>&1 1>&2 2>&3)
+  
+    if [ $? -ne 0 ]; then
+      break
+    fi
+
+    case "$MENU_CHOICE" in
+      "KEYMAP") set_keymap ;;
+      "EXIT") break ;;
+    esac
+  done
+}
+
+main
