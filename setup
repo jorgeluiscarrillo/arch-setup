@@ -41,6 +41,7 @@ a wireless connection.\n\nWould you like to launch 'wifi-menu' to connect \
 to the internet?\nIf you select No, the installer will exit." 11 80
       if [ $? -eq 0 ]; then
         wifi-menu
+        break
       else
         exit
       fi
@@ -57,15 +58,56 @@ set_keymap() {
     keymaps+=("$map" "")
   done
   
-    KEYMAP=$(dialog --title "Set the keyboard layout" \
-      --menu "Select a keymap that corresponds to your keyboard layout. The \
+  KEYMAP=$(dialog --title "Set the keyboard layout" \
+    --menu "Select a keymap that corresponds to your keyboard layout. The \
 default is 'us' (QWERTY). Use the UP/DOWN arrow keys and PageUp/PageDown to \
 navigate the list, then press enter to confirm your selection." 30 60 25 \
 "${keymaps[@]}" 3>&1 1>&2 2>&3)
 
-    if [ $? -eq 0 ]; then
-      localectl set-keymap $KEYMAP
+  if [ $? -eq 0 ]; then
+    localectl set-keymap $KEYMAP
+  fi
+}
+
+partition() {
+  # List all available block devices excluding 'rom' and 'loop'
+  BLOCK_DEVICES=()
+  for device in $(lsblk -d -n -p -r -e 7,11 -o NAME); do
+    device_size=$(lsblk -d -n -r -o SIZE "$device")
+    BLOCK_DEVICES+=("$device" "$device_size")
+  done
+
+  PARTITION_LAYOUT=$(dialog --title "Partition the disks" \
+    --menu "The installer will now automatically partition a disk for you. \
+If you have no preference or are unsure about which partition layout to \
+choose, the 'Basic' layout is the simplest and should be enough for most use \
+cases.\n\nOnce you select a partition layout, you will then be asked which \
+disk should be used.\n\nPartition layout:" 18 85 3 \
+"Basic" "Use entire disk" \
+"LVM" "Use entire disk and set up LVM" 3>&1 1>&2 2>&3)
+
+  DISK=$(dialog --title "Set the installation disk" \
+    --menu "Select the disk for Arch Linux to be installed on. Note that the \
+disk you select will be erased, but not until you have confirmed the \
+changes.\n\nDisk to partition:" 20 55 5 \
+"${BLOCK_DEVICES[@]}" 3>&1 1>&2 2>&3)
+
+  # NVME and SATA devices have different naming conventions for partitions 
+  if [[ $DISK == *"nvme"* ]]; then
+    if UEFI_BOOT; then
+      DISK_BOOT="${DISK}p1"
+      DISK_ROOT="${DISK}p2"
+    else
+      DISK_ROOT="${DISK}p1"
     fi
+  else
+    if UEFI_BOOT; then
+      DISK_BOOT="${DISK}1"
+      DISK_ROOT="${DISK}2"
+    else
+     DISK_ROOT="${DISK}1" 
+    fi
+  fi
 }
 
 main() {
@@ -73,6 +115,7 @@ main() {
   check_connection
   # Update the system clock
   timedatectl set-ntp true
+  partition
 
   while true; do
     MENU_CHOICE=$(dialog --title "Arch Linux Installer" \
