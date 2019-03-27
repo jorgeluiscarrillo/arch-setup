@@ -36,6 +36,18 @@ retry running the installer." 11 80
   fi
 }
 
+# Check for any already existing LVM groups and remove them
+check_lvm_status() {
+  LVM_STATUS=$(lvdisplay | grep "LV Status" | sort -u | awk '{print $3}')
+  if [ "$LVM_STATUS" = "available" ]; then
+    for vgroup in $(lvdisplay | grep "VG Name" | sort -u | awk '{print $3}');
+    do
+      vgchange -f -a n $vgroup &> /dev/null
+      vgremove -f $vgroup &> /dev/null
+    done
+  fi
+}
+
 # Allow the user to select one of the available keyboard maps
 set_keymap() {
   keymaps=()
@@ -43,7 +55,7 @@ set_keymap() {
     keymaps+=("$map" "")
   done
   
-  KEYMAP=$(dialog --title "Set the keyboard layout" --nocancel \
+  KEYMAP=$(dialog --title "Set the Keyboard Layout" --nocancel \
     --menu "Select a keymap that corresponds to your keyboard layout. The \
 default is 'us' (QWERTY). Use the UP/DOWN arrow keys and PageUp/PageDown to \
 navigate the list, then press enter to confirm your selection." 30 60 25 \
@@ -54,6 +66,7 @@ navigate the list, then press enter to confirm your selection." 30 60 25 \
   fi
 }
 
+# Prepare the user's selected disk for partitioning
 prepare_disk() {
   # List all available block devices excluding 'rom' and 'loop'
   BLOCK_DEVICES=()
@@ -63,16 +76,16 @@ prepare_disk() {
   done
 
   while true; do
-    PARTITION_LAYOUT=$(dialog --title "Partition the disks" \
+    PARTITION_LAYOUT=$(dialog --title "Partition the Disks" \
       --menu "The installer will now automatically partition a disk for you. \
 If you have no preference or are unsure about which partition layout to \
 choose, the 'Basic' layout is the simplest and should be enough for most use \
-cases.\n\nPartition layout:" 18 85 3 \
+cases.\n\nPartition layout:" 18 80 3 \
 "Basic" "Use entire disk" \
 "LVM" "Use entire disk and set up LVM" 3>&1 1>&2 2>&3)
 
     if [ $? -eq 0 ]; then
-      DISK=$(dialog --title "Set the installation disk" \
+      DISK=$(dialog --title "Set the Installation Disk" \
         --menu "Select the disk for Arch Linux to be installed on. Note that \
 the disk you select will be erased, but not until you have confirmed the \
 changes.\n\nDisk to partition:" 20 55 5 \
@@ -80,7 +93,6 @@ changes.\n\nDisk to partition:" 20 55 5 \
 
       if [ $? -eq 0 ]; then
         # NVME & SATA devices have different naming conventions for partitions 
-        # TODO: Move this to a different function (formatting?)
         if [[ $DISK == *"nvme"* ]]; then
           if [ -d /sys/firmware/efi ]; then
             DISK_BOOT="${DISK}p1"
@@ -97,11 +109,24 @@ changes.\n\nDisk to partition:" 20 55 5 \
           fi
         fi
 
+        FILE_SYSTEM=$(dialog --title "Set the Filesystem for $DISK_ROOT" \
+          --nocancel --menu "Select the type of filesystem to use for the \
+specified device. If you are unsure, 'ext4' is the default.\n\nFilesystem \
+type:" 18 68 7 \
+"ext4" "Ext4 journaling filesystem" \
+"ext3" "Ext3 journaling filesystem" \
+"ext2" "Standard Linux Ext2 filesystem" \
+"jfs" "IBM's journaling filesystem" \
+"reiserfs" "ReiserFS journaling filesystem" \
+"btrfs" "Btrfs Copy-on-Write B-tree filesystem" \
+"xfs" "SGI's journaling filesystem" 3>&1 1>&2 2>&3)
+
         dialog --title "Create a swap partition" \
           --yesno "Would you like to create an optional swap partition? If \
-you are unsure, it is recommended to create one." 6 60 
+you are unsure, it is recommended to create one." 6 57 
 
         if [ $? -eq 0 ]; then
+          # Get the amount of RAM in the system to use as default swap size
           MEM_TOTAL=$(free --giga | awk '/^Mem:/{print $2}')
           if [ "$MEM_TOTAL" = "0" ]; then
             MEM_TOTAL="${MEM_TOTAL}M"
@@ -122,7 +147,7 @@ system.\n\nSwap partition size (use 'M' for MiB or 'G' for GiB):" 13 80 \
               disk_size_gibs=$((disk_size_mibs / 1024))
               swap_size=$(echo "$SWAP" | tr -c -d '[:digit:]')
 
-              # Input validation
+              # Input validation for swap size
               if [ "$(echo "$SWAP" | egrep -o "^[0-9]+[MG]$")" ]; then
                 if [ "${SWAP: -1}" = "M" ] && \
                   [ "$swap_size" -lt $(( $disk_size_mibs - 2048 )) ]; then
@@ -154,14 +179,16 @@ space available on the disk. Note that the installer sets aside an additional \
           SWAP="-"
         fi
 
-        dialog --title "Confirm your partition layout" --defaultno \
+        dialog --title "Confirm Your Partition Layout" --defaultno \
           --yesno "WARNING: All data on the selected disk will be lost! Make \
 sure to review your changes before continuing.\n\nDisk to partition: \
-$DISK\nPartition layout: $PARTITION_LAYOUT\nSwap partition: $SWAP\n\nAre you \
-sure you want to write the changes to the disk?" 13 60  
+$DISK\nPartition layout: $PARTITION_LAYOUT\nFilesystem type: \
+$FILE_SYSTEM\nSwap partition: $SWAP\n\nAre you sure you want to write the \
+changes to the disk?" 13 60  
         if [ $? -eq 0 ]; then
           case $PARTITION_LAYOUT in
             "Basic") create_basic_layout ;;
+            "LVM") create_lvm_layout ;;
           esac
         else
           main_menu
@@ -173,7 +200,9 @@ sure you want to write the changes to the disk?" 13 60
   done
 }
 
+# Partition the selected disk using the simplest partition layout
 create_basic_layout() {
+  check_lvm_status
   if [ -d /sys/firmware/efi ]; then
     parted -s $DISK mklabel gpt
     if $swap_enabled; then
@@ -193,6 +222,31 @@ create_basic_layout() {
   fi
 }
 
+# Partition the selected disk and prepare for Arch installation on LVM
+create_lvm_layout() {
+  check_lvm_status
+  if [ -d /sys/firmware/efi ]; then
+    parted -s $DISK mklabel gpt
+    sgdisk -n 1:0:+512M -n 2:0:0 -t 1:ef00 -t 2:8e00 $DISK &> /dev/null
+  else
+    parted -s $DISK mklabel msdos
+    echo -e "n\np\n1\n\n\nt\n8e\nw" | fdisk $DISK &> /dev/null
+  fi
+
+  LVM_GROUP="arch"
+  LVM_ROOT="root"
+  pvcreate $DISK_ROOT &> /dev/null
+  vgcreate $LVM_GROUP $DISK_ROOT &> /dev/null
+  if $swap_enabled; then
+    LVM_SWAP="swap"
+    lvcreate -L $SWAP $LVM_GROUP -n $LVM_SWAP &> /dev/null
+    lvcreate -l +100%FREE $LVM_GROUP -n $LVM_ROOT &> /dev/null
+  else
+    lvcreate -l +100%FREE $LVM_GROUP -n $LVM_ROOT &> /dev/null
+  fi
+}
+
+# Menu which allows the user to navigate the installer
 main_menu() {
   while true; do
     menu_choice=$(dialog --title "Arch Linux Installer" \
