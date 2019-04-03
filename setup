@@ -36,8 +36,8 @@ retry running the installer." 11 80
   fi
 }
 
-# Check for any already existing LVM groups and remove them
-check_lvm_status() {
+# Check if there are any active LVM or crypt devices
+check_device_status() {
   LVM_STATUS=$(lvdisplay | grep "LV Status" | sort -u | awk '{print $3}')
   if [ "$LVM_STATUS" = "available" ]; then
     for vgroup in $(lvdisplay | grep "VG Name" | sort -u | awk '{print $3}');
@@ -45,6 +45,32 @@ check_lvm_status() {
       vgchange -f -a n $vgroup &> /dev/null
       vgremove -f $vgroup &> /dev/null
     done
+  fi
+
+  if [ "$(dmsetup ls --target crypt)" != "No devices found" ]; then
+    dialog --title "WARNING: Encrypted Device In Use" --defaultno \
+      --yesno "The installer has detected that there is an encrypted device \
+that is currently in use.\n\nThis message may appear if you chose the \
+'Encrypted' option during partitioning, but did not complete the \
+installation or you changed to a different partition layout.\n\nIf the above \
+message is true, then you can ignore this warning and select 'Yes' to proceed \
+with the installation. If you have any active encrypted devices that were not \
+created by the installer, you should select 'No'.\n\nWould you like the \
+installer to close all active encrypted devices and proceed with the \
+installation?" 18 75
+
+    if [ $? -eq 0 ]; then
+      for active_crypt in "$(dmsetup ls --target crypt | awk '{print $1}')"; do
+        cryptsetup close "$active_crypt"
+      done
+    else
+      dialog --title "ERROR: Unable to Partition $DISK" \
+        --msgbox "The installer encountered an error while partitioning \
+$DISK.\n\nIf you have any active encrypted devices, please close them before \
+running the installer. If you keep encountering this error, please reboot \
+your machine and try again." 10 70
+      reset ; exit
+    fi
   fi
 }
 
@@ -80,9 +106,10 @@ prepare_disk() {
       --menu "The installer will now automatically partition a disk for you. \
 If you have no preference or are unsure about which partition layout to \
 choose, the 'Basic' layout is the simplest and should be enough for most use \
-cases.\n\nPartition layout:" 18 80 3 \
+cases.\n\nPartition layout:" 16 80 3 \
 "Basic" "Use entire disk" \
-"LVM" "Use entire disk and set up LVM" 3>&1 1>&2 2>&3)
+"LVM" "Use entire disk and set up LVM" \
+"Encrypted" "Use entire disk and set up encrypted LVM" 3>&1 1>&2 2>&3)
 
     if [ $? -eq 0 ]; then
       DISK=$(dialog --title "Set the Installation Disk" \
@@ -92,36 +119,22 @@ changes.\n\nDisk to partition:" 20 55 5 \
 "${BLOCK_DEVICES[@]}" 3>&1 1>&2 2>&3)
 
       if [ $? -eq 0 ]; then
-        # NVME & SATA devices have different naming conventions for partitions 
+        # NVME devices have different naming conventions for partitions 
         if [[ $DISK == *"nvme"* ]]; then
-          if [ -d /sys/firmware/efi ]; then
-            DISK_BOOT="${DISK}p1"
-            DISK_ROOT="${DISK}p2"
-          else
-            DISK_ROOT="${DISK}p1"
-          fi
-        else
-          if [ -d /sys/firmware/efi ]; then
-            DISK_BOOT="${DISK}1"
-            DISK_ROOT="${DISK}2"
-          else
-           DISK_ROOT="${DISK}1" 
-          fi
+          PREFIX="p"
         fi
 
         FILE_SYSTEM=$(dialog --title "Set the Filesystem for $DISK_ROOT" \
           --nocancel --menu "Select the type of filesystem to use for the \
 specified device. If you are unsure, 'ext4' is the default.\n\nFilesystem \
-type:" 18 68 7 \
+type:" 18 68 5 \
 "ext4" "Ext4 journaling filesystem" \
 "ext3" "Ext3 journaling filesystem" \
 "ext2" "Standard Linux Ext2 filesystem" \
-"jfs" "IBM's journaling filesystem" \
-"reiserfs" "ReiserFS journaling filesystem" \
 "btrfs" "Btrfs Copy-on-Write B-tree filesystem" \
 "xfs" "SGI's journaling filesystem" 3>&1 1>&2 2>&3)
 
-        dialog --title "Create a swap partition" \
+        dialog --title "Create a Swap Partition" \
           --yesno "Would you like to create an optional swap partition? If \
 you are unsure, it is recommended to create one." 6 57 
 
@@ -135,7 +148,7 @@ you are unsure, it is recommended to create one." 6 57
           fi
 
           while true; do
-            SWAP=$(dialog --title "Allocate swap space" \
+            SWAP=$(dialog --title "Allocate Swap Space" \
               --inputbox "Specify how much swap space to allocate. If you are \
 unsure, the default is to have swap space equal to the amount of RAM in your \
 system.\n\nSwap partition size (use 'M' for MiB or 'G' for GiB):" 13 80 \
@@ -145,10 +158,10 @@ system.\n\nSwap partition size (use 'M' for MiB or 'G' for GiB):" 13 80 \
               disk_size_bytes=$(lsblk -b -d -n -o SIZE $DISK)
               disk_size_mibs=$((disk_size_bytes / 1024 / 1024))
               disk_size_gibs=$((disk_size_mibs / 1024))
-              swap_size=$(echo "$SWAP" | tr -c -d '[:digit:]')
+              swap_size=$(printf "$SWAP" | tr -c -d '[:digit:]')
 
               # Input validation for swap size
-              if [ "$(echo "$SWAP" | egrep -o "^[0-9]+[MG]$")" ]; then
+              if [ "$(printf "$SWAP" | egrep -o "^[0-9]+[MG]$")" ]; then
                 if [ "${SWAP: -1}" = "M" ] && \
                   [ "$swap_size" -lt $(( $disk_size_mibs - 2048 )) ]; then
                   swap_enabled=true
@@ -158,13 +171,13 @@ system.\n\nSwap partition size (use 'M' for MiB or 'G' for GiB):" 13 80 \
                   swap_enabled=true
                   break
                 else
-                  dialog --title "ERROR: Not enough disk space" \
+                  dialog --title "ERROR: Not Enough Disk Space" \
                     --msgbox "The amount you entered exceeds the amount of \
 space available on the disk. Note that the installer sets aside an additional \
 2 GiB to have enough space for the base installation." 8 60
                 fi
               else
-                dialog --title "ERROR: Invalid format" \
+                dialog --title "ERROR: Invalid Format" \
                   --msgbox "You entered an invalid format. Make sure to use \
 'M' for 'MiB' or 'G' for 'GiB'." 6 60
               fi
@@ -186,10 +199,12 @@ $DISK\nPartition layout: $PARTITION_LAYOUT\nFilesystem type: \
 $FILE_SYSTEM\nSwap partition: $SWAP\n\nAre you sure you want to write the \
 changes to the disk?" 13 60  
         if [ $? -eq 0 ]; then
-          case $PARTITION_LAYOUT in
+          check_device_status
+          case "$PARTITION_LAYOUT" in
             "Basic") create_basic_layout ;;
-            "LVM") create_lvm_layout ;;
+            "LVM"|"Encrypted") create_lvm_layout ;;
           esac
+          break
         else
           main_menu
         fi
@@ -201,55 +216,146 @@ changes to the disk?" 13 60
 }
 
 # Partition the selected disk using the simplest partition layout
+# UEFI systems use GPT partitioning and BIOS/CSM systems use MBR
 create_basic_layout() {
-  check_lvm_status
   if [ -d /sys/firmware/efi ]; then
+    BOOT_PART="${DISK}${PREFIX}1"
+    ROOT_PART="${DISK}${PREFIX}2"
     parted -s $DISK mklabel gpt
     if $swap_enabled; then
       sgdisk -n 1:0:+512M -n 2:0:-$SWAP -n 3:-$SWAP:-0 -t 1:ef00 -t 2:8300 \
         -t 3:8200 $DISK &> /dev/null
+      SWAP_PART="${DISK}${PREFIX}3"
+      mkswap $SWAP_PART &> /dev/null
     else
       sgdisk -n 1:0:+512M -n 2:0:0 -t 1:ef00 -t 2:8300 $DISK &> /dev/null
     fi
+    mkfs.fat -F32 $BOOT_PART &> /dev/null
+    mkfs."$FILE_SYSTEM" $ROOT_PART &> /dev/null
   else
+    ROOT_PART="${DISK}${PREFIX}1"
     parted -s $DISK mklabel msdos
     if $swap_enabled; then
       echo -e "n\np\n1\n\n-${SWAP}\nn\np\n2\n\n\nt\n2\n82\nw" | \
         fdisk $DISK &> /dev/null
+      SWAP_PART="${DISK}${PREFIX}2"
+      mkswap $SWAP_PART &> /dev/null
     else
       echo -e "n\np\n1\n\n\nw" | fdisk $DISK &> /dev/null
     fi
+
+    case "$FILE_SYSTEM" in
+      btrfs|xfs) mkfs."$FILE_SYSTEM" -f "$ROOT_PART" &> /dev/null ;;
+      *) mkfs."$FILE_SYSTEM" "$ROOT_PART" &> /dev/null ;;
+    esac
   fi
 }
 
 # Partition the selected disk and prepare for Arch installation on LVM
 create_lvm_layout() {
-  check_lvm_status
   if [ -d /sys/firmware/efi ]; then
+    BOOT_PART="${DISK}${PREFIX}1"
+    ROOT_PART="${DISK}${PREFIX}2"
     parted -s $DISK mklabel gpt
     sgdisk -n 1:0:+512M -n 2:0:0 -t 1:ef00 -t 2:8e00 $DISK &> /dev/null
   else
+    ROOT_PART="${DISK}${PREFIX}1"
     parted -s $DISK mklabel msdos
     echo -e "n\np\n1\n\n\nt\n8e\nw" | fdisk $DISK &> /dev/null
   fi
 
   LVM_GROUP="arch"
   LVM_ROOT="root"
-  pvcreate $DISK_ROOT &> /dev/null
-  vgcreate $LVM_GROUP $DISK_ROOT &> /dev/null
+  if [ "$PARTITION_LAYOUT" = "Encrypted" ]; then
+    create_encrypted_layout
+  else
+    pvcreate -f $ROOT_PART &> /dev/null 
+    vgcreate -f $LVM_GROUP $ROOT_PART &> /dev/null
+    if $swap_enabled; then
+      LVM_SWAP="swap"
+      lvcreate -y -L $SWAP $LVM_GROUP -n $LVM_SWAP &> /dev/null 
+      lvcreate -y -l 100%FREE $LVM_GROUP -n $LVM_ROOT &> /dev/null 
+      mkswap "/dev/${LVM_GROUP}/${LVM_SWAP}" &> /dev/null
+    else
+      lvcreate -y -l 100%FREE $LVM_GROUP -n $LVM_ROOT &> /dev/null 
+    fi
+    
+    case "$FILE_SYSTEM" in
+      btrfs|xfs) mkfs."$FILE_SYSTEM" -f "/dev/${LVM_GROUP}/${LVM_ROOT}" \
+                   &> /dev/null ;;
+      *) mkfs."$FILE_SYSTEM" "/dev/${LVM_GROUP}/${LVM_ROOT}" &> /dev/null ;; 
+    esac
+  fi
+}
+
+# Set up LUKS on top of the LVM partition for root disk encryption
+create_encrypted_layout() {
+  phrases_match=false
+  while ! $phrases_match; do
+    phrase=$(dialog --title "Encrypt $ROOT_PART" --clear --stdout \
+      --insecure --passwordbox "Enter a passphrase to encrypt \
+$ROOT_PART.\n\nThe overall strength of the encryption process depends \
+strongly on this passphrase, therefore you should set a passphrase that is \
+not easy to guess.\n\nNote that the passphrase you enter will be required \
+each time on boot.\n\nEncryption passphrase:" 17 80)
+
+    if [ $? -eq 0 ]; then
+      confirm_phrase=$(dialog --title "Encrypt $ROOT_PART" --clear --stdout \
+        --insecure --passwordbox "Re-enter passphrase to verify:" 8 55)
+
+      if [ -z "$phrase" ]; then
+        dialog --title "ERROR: Empty Passphrase" \
+          --msgbox "You are not allowed to have an empty passphrase." 5 55
+      elif [ "$phrase" != "$confirm_phrase" ]; then
+        dialog --title "ERROR: Passphrases Do No Match" \
+          --msgbox "The two passphrases you entered did not match." 5 55
+      elif [ "${#phrase}" -lt 8 ]; then
+        dialog --title "WARNING: Weak Passphrase" --defaultno \
+          --yesno "The passphrase you entered is less than 8 characters which \
+is considered insecure.\n\nContinue using a weak passphrase?"  8 60
+        if [ $? -eq 0 ]; then
+          phrases_match=true
+        fi
+      else
+        phrases_match=true
+      fi
+    else
+      dialog --title "Revert Partition Changes" --defaultno \
+        --yesno "Are you sure you want to cancel the encryption \
+process? If you choose yes, you will be returned to the partition menu." 7 65
+      if [ $? -eq 0 ]; then
+        prepare_disk
+      fi
+    fi
+  done
+
+  CRYPT_DEVICE_NAME="cryptlvm"
+  printf "$phrase" | cryptsetup luksFormat "$ROOT_PART" - &> /dev/null
+  printf "$phrase" | cryptsetup open "$ROOT_PART" "$CRYPT_DEVICE_NAME" -
+  pvcreate -f "/dev/mapper/${CRYPT_DEVICE_NAME}" &> /dev/null
+  vgcreate -f "$LVM_GROUP" "/dev/mapper/${CRYPT_DEVICE_NAME}" &> /dev/null
+
   if $swap_enabled; then
     LVM_SWAP="swap"
-    lvcreate -L $SWAP $LVM_GROUP -n $LVM_SWAP &> /dev/null
-    lvcreate -l +100%FREE $LVM_GROUP -n $LVM_ROOT &> /dev/null
+    lvcreate -y -L $SWAP $LVM_GROUP -n $LVM_SWAP &> /dev/null 
+    lvcreate -y -l 100%FREE $LVM_GROUP -n $LVM_ROOT &> /dev/null 
+    mkswap "/dev/mapper/${LVM_GROUP}-${LVM_SWAP}" &> /dev/null
   else
-    lvcreate -l +100%FREE $LVM_GROUP -n $LVM_ROOT &> /dev/null
+    lvcreate -y -l 100%FREE $LVM_GROUP -n $LVM_ROOT &> /dev/null 
   fi
+  
+  case "$FILE_SYSTEM" in
+    btrfs|xfs) mkfs."$FILE_SYSTEM" -f "/dev/mapper/${LVM_GROUP}-${LVM_ROOT}" \
+                 &> /dev/null ;;
+    *) mkfs."$FILE_SYSTEM" "/dev/mapper/${LVM_GROUP}-${LVM_ROOT}" \
+                 &> /dev/null ;; 
+  esac
 }
 
 # Menu which allows the user to navigate the installer
 main_menu() {
   while true; do
-    menu_choice=$(dialog --title "Arch Linux Installer" \
+    menu_choice=$(dialog --title "Arch Linux Installer Main Menu" \
       --menu "Select an option below using the UP/DOWN keys and SPACE or \
 ENTER.\nAlternate keys may also be used: '+', '-', and TAB." 18 72 9 \
 "KEYMAP" "Modify your keyboard layout" \
