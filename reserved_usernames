@@ -1,5 +1,6 @@
-# This is a list of reserved usernames from Debian
+# This is a list of reserved usernames used to avoid any conflict when creating a user.
 # https://salsa.debian.org/installer-team/user-setup/raw/master/reserved-usernames
+# # Static users from base-passwd/passwd.master (3.5.41).
 root
 daemon
 bin
@@ -18,6 +19,8 @@ list
 irc
 gnats
 nobody
+
+# Other static groups from base-passwd/group.master (3.5.41).
 adm
 tty
 disk
@@ -41,6 +44,8 @@ plugdev
 staff
 users
 nogroup
+
+# Reserved usernames listed in base-passwd/README (3.5.41).
 netplan
 ftn
 mysql
@@ -67,7 +72,15 @@ grsec-proc
 ceph
 opensrf
 libvirt-qemu
+
+# Ubuntu creates the admin group and adds the first user to it in order to
+# grant them sudo privileges.
 admin
+
+# Other miscellaneous system users/groups created by common packages. While
+# it's useful to add things here that people might run into, it's not
+# absolutely critical; the worst that will happen is that the installation
+# will fail at some later point.
 Debian-exim
 bind
 crontab
