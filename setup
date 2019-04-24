@@ -2,23 +2,10 @@
 
 clear
 setfont Lat2-Terminus16.psfu.gz
-
-# Do an inital check of the user's keyboard map
-check_keymap() {
-  echo "<SET THE KEYBOARD LAYOUT>"
-  echo
-  echo "The default keyboard layout is US (QWERTY)."
-  echo "If you are not using a US (QWERTY) keyboard, you should now load a \
-keymap that corresponds to your keyboard layout."
-  echo "To load a different keyboard map, enter 1. To continue using the US \
-keyboard layout, press enter."
-  echo
-  read -p "Enter 1 to select a different keyboard map, otherwise press \
-enter: " CHANGE_KEYMAP
-  if [ "$CHANGE_KEYMAP" = "1" ]; then
-    set_keymap
-  fi
-}
+dialog --title "Welcome to Arch Linux Installer" \
+  --ok-label "Begin Installation" --msgbox "Navigating the installer is \
+easy.\nYou may select options using the ARROW keys and SPACE or \
+ENTER.\nAlternate keys may also be used: '+', '-', and TAB." 7 70
 
 # Proceed with installation only if there is an internet connection
 check_connection() {
@@ -74,22 +61,266 @@ your machine and try again." 10 70
   fi
 }
 
-# Allow the user to select one of the available keyboard maps
+# Prompt the user to set their keyboard layout
 set_keymap() {
-  keymaps=()
-  for map in $(localectl list-keymaps); do
-    keymaps+=("$map" "")
-  done
-  
-  KEYMAP=$(dialog --title "Set the Keyboard Layout" --nocancel \
-    --menu "Select a keymap that corresponds to your keyboard layout. The \
-default is 'us' (QWERTY). Use the UP/DOWN arrow keys and PageUp/PageDown to \
-navigate the list, then press enter to confirm your selection." 30 60 25 \
+  while true; do
+    KEYMAP=$(dialog --title "Set the Keyboard Layout" --nocancel \
+      --default-item "us" --menu "Select a keymap that corresponds to your \
+keyboard layout. Choose 'other' if your keymap is not listed. If you are \
+unsure, the default is 'us' (United States/QWERTY).\n\nKeymap:" 28 57 16 \
+"br-abnt2" "Brazilian Portuguese" \
+"cf" "Canadian-French" \
+"colemak" "Colemak (US)" \
+"dvorak" "Dvorak (US)" \
+"fr-latin1" "French" \
+"de-latin1" "German" \
+"it" "Italian" \
+"jp" "Japanese" \
+"pt-latin9" "Portuguese" \
+"ru4" "Russian" \
+"es" "Spanish" \
+"la-latin1" "Spanish Latinoamerican" \
+"sv-latin1" "Swedish" \
+"us" "United States" \
+"uk" "United Kingdom" \
+"other" "View all available keymaps" 3>&1 1>&2 2>&3)
+
+    if [ "$KEYMAP" = "other" ]; then
+      keymaps=()
+      for map in $(localectl list-keymaps); do
+        keymaps+=("$map" "")
+      done
+    
+      KEYMAP=$(dialog --title "Set the Keyboard Layout" --cancel-label "Back" \
+        --menu "Select a keymap that corresponds to your keyboard layout. The \
+default is 'us' (United States/QWERTY)." 30 60 25 \
 "${keymaps[@]}" 3>&1 1>&2 2>&3)
 
-  if [ $? -eq 0 ]; then
-    localectl set-keymap $KEYMAP
-  fi
+      if [ $? -eq 0 ]; then
+        break
+      fi
+    else
+      break
+    fi
+  done
+}
+
+# Prompt the user to set the system locale
+set_locale() {
+  while true; do
+    LOCALE=$(dialog --title "Set the System Locale" --nocancel \
+      --default-item "en_US.UTF-8" --menu "Select a locale that corresponds \
+to your language and region. The locale you select will define the language \
+used by the system and other region specific information. Choose 'other' if \
+your language and/or region is not listed. If you are unsure, the default is \
+'en_US.UTF-8'.\n\nLocale:" 30 65 16 \
+"zh_CN.UTF-8" "Chinese (Simplified)" \
+"en_AU.UTF-8" "English (Australia)" \
+"en_CA.UTF-8" "English (Canada)" \
+"en_US.UTF-8" "English (United States)" \
+"en_GB.UTF-8" "English (Great Britain)" \
+"fr_FR.UTF-8" "French (France)" \
+"de_DE.UTF-8" "German (Germany)" \
+"it_IT.UTF-8" "Italian (Italy)" \
+"ja_JP.UTF-8" "Japanese (Japan)" \
+"pt_BR.UTF-8" "Portuguese (Brazil)" \
+"pt_PT.UTF-8" "Portuguese (Portugal)" \
+"ru_RU.UTF-8" "Russian (Russia)" \
+"es_MX.UTF-8" "Spanish (Mexico)" \
+"es_ES.UTF-8" "Spanish (Spain)" \
+"sv_SE.UTF-8" "Swedish (Sweden)" \
+"other" "View all available locales" 3>&1 1>&2 2>&3)
+
+    if [ "$LOCALE" = "other" ]; then
+      locales=()
+      for loc in $(egrep "^#?[a-z].*UTF-8" /etc/locale.gen | \
+        sed -e 's/#//' -e 's/\s.*$//'); do
+        locales+=("$loc" "")
+      done
+
+      LOCALE=$(dialog --title "Set the System Locale" --cancel-label "Back" \
+        --menu "Select a locale that corresponds to your language and region. \
+The locale you select will define the language used by the system and other
+region specific information. If you are unsure, the default is \
+'en_US.UTF-8'.\n\nLocale:" 30 65 16 \
+"${locales[@]}" 3>&1 1>&2 2>&3)
+      
+      if [ $? -eq 0 ]; then
+          break
+      fi
+    else
+      break
+    fi
+  done
+}
+
+# Prompt the user to set the system time zone
+set_timezone() {
+  regions=()
+  for region in $(find /usr/share/zoneinfo -mindepth 1 -maxdepth 1 -type d \
+    ! -path "*posix" ! -path "*right" -printf '%f\n' | sort); do
+    regions+=("$region" "")
+  done
+  regions+=("other" "")
+
+  while true; do
+    ZONE=$(dialog --title "Set the Time Zone" --nocancel \
+      --menu "Select your time zone.\nIf your region is not listed, select \
+'other'.\n\nTime zone:" 27 50 17 \
+"${regions[@]}" 3>&1 1>&2 2>&3)
+
+    if [ "$ZONE" != "other" ]; then
+      zone_regions=()
+      for zone_region in $(find /usr/share/zoneinfo/"${ZONE}" \
+        -mindepth 1 -maxdepth 1 -printf '%f\n' | sort); do
+        zone_regions+=("$zone_region" "")
+      done
+
+      SUBZONE=$(dialog --title "Set the Time Zone" --cancel-label "Back" \
+        --menu "Select your time zone.\n\nTime zone:" 27 50 17 \
+"${zone_regions[@]}" 3>&1 1>&2 2>&3)
+
+      if [ $? -eq 0 ]; then
+        if [ -d /usr/share/zoneinfo/"${ZONE}/${SUBZONE}" ]; then
+          subzone_regions=()
+          for subzone_region in $(find /usr/share/zoneinfo/"${ZONE}/${SUBZONE}" \
+            -mindepth 1 -maxdepth 1 -printf '%f\n' | sort); do
+            subzone_regions+=("$subzone_region" "")
+          done
+          
+          SUBZONE_SUBREGION=$(dialog --title "Set the Time Zone" \
+            --cancel-label "Back" \
+            --menu "Select your time zone.\n\nTime zone:" 27 50 17 \
+"${subzone_regions[@]}" 3>&1 1>&2 2>&3)
+
+          if [ $? -eq 0 ]; then
+            ZONE="${ZONE}/${SUBZONE}/${SUBZONE_SUBREGION}"
+            break
+          fi
+        else
+          ZONE="${ZONE}/${SUBZONE}"
+          break
+        fi
+      fi
+    else
+      for other_region in $(ls -p /usr/share/zoneinfo | egrep -v \
+        '/$|iso3166.tab|leapseconds|posixrules|tzdata.zi|zone.tab|zone1970.tab');
+      do
+        other_regions+=("$other_region" "")
+      done
+
+      ZONE=$(dialog --title "Set the Time Zone" --cancel-label "Back" \
+        --menu "Select your time zone.\n\nTime zone:" 27 50 17 \
+"${other_regions[@]}" 3>&1 1>&2 2>&3)
+
+      if [ $? -eq 0 ]; then
+        ZONE="${ZONE}"
+        break
+      fi
+    fi
+  done
+}
+
+# Prompt the user to set the hostname for the system
+set_hostname() {
+  while true; do
+    HOST_NAME=$(dialog --title "Set the Hostname" --nocancel \
+      --inputbox "Please enter the hostname for this system.\n\nThe hostname \
+is a single word that identifies your system to the network.\n\nHostname:" \
+12 80 "arch" 3>&1 1>&2 2>&3)
+
+    if [ $(printf -- "$HOST_NAME" | egrep -o "^[a-zA-Z0-9-]{1,63}$") ] && \
+      [ "${HOST_NAME:0:1}" != "-" ] && \
+      [ "${HOST_NAME: -1}" != "-" ]; then
+      break
+    else
+      dialog --title "ERROR: Invalid Hostname Format" \
+        --msgbox "You entered an invalid hostname.\n\nA valid hostname may \
+contain only the numbers 0-9, upper and lowercase letters (A-Z and a-z), and \
+the minus sign. It must be at most 63 characters long, and may not begin \
+or end with a minus sign." 9 75
+    fi
+  done
+}
+
+# Prompt the user to create a password for the superuser account
+set_root_passwd(){
+  inputs_match=false
+  while ! $inputs_match; do
+    input=$(dialog --title "Set the Root Password" --clear --stdout --nocancel \
+      --insecure --passwordbox "Please enter a password for 'root', the \
+system administrative account.\n\nRoot password:" 10 75)
+    confirm_input=$(dialog --title "Set the Root Password" --clear --stdout \
+      --insecure --passwordbox "Re-enter password to verify:" 8 55)
+
+    if [ -z "$input" ]; then
+      dialog --title "ERROR: Empty Password" \
+        --msgbox "You are not allowed to have an empty password." 5 55
+    elif [ "$input" != "$confirm_input" ]; then
+      dialog --title "ERROR: Passwords Do No Match" \
+        --msgbox "The two passwords you entered did not match." 5 55
+    else
+      root_passwd="$input"
+      inputs_match=true
+    fi
+  done
+}
+
+# Prompt the user to create an unprivileged user account
+create_user() {
+  while true; do
+    FULL_NAME=$(dialog --title "Create a User Account" --nocancel \
+      --inputbox "The installer will create a user account for you. This is \
+the main user account that you will login to and use for non-administrative \
+activities.\n\nPlease enter the real name for this user. This information \
+will be used for any program that uses the user's real name such as email. \
+Entering your full name here is recommended; however, it may be left \
+blank.\n\nFull name for the new user:" 15 80 3>&1 1>&2 2>&3)
+
+    USER_NAME=$(dialog --title "Create a User Account" \
+     --cancel-label "Back" --inputbox "Please enter a username for the new \
+account.\n\nThe username should start with a lower-case letter, which can be \
+followed by any combination of numbers, more lower-case letters, or the dash \
+symbol.\n\nUsername for your account:" 13 80 3>&1 1>&2 2>&3)
+    if [ $? -eq 0 ]; then
+      if [ $(printf -- "$USER_NAME" | egrep -o "^[a-z][a-z0-9-]*$") ] && \
+        [ "${#USER_NAME}" -lt 33 ]; then
+        if grep -Fxq "$USER_NAME" reserved_usernames; then
+          dialog --title "ERROR: Reserved Username" \
+            --msgbox "The username you entered ($USER_NAME) is reserved for \
+use by the system. Please select a different one." 6 70
+        else 
+          inputs_match=false
+          while ! $inputs_match; do
+            input=$(dialog --title "Set the Password for $USER_NAME" --clear \
+              --stdout --nocancel --insecure --passwordbox "Please enter a \
+password for '$USER_NAME'.\n\nChoose a password for the new user:" 10 70)
+            confirm_input=$(dialog --title "Set the Password for $USER_NAME" \
+              --clear --stdout --insecure \
+              --passwordbox "Re-enter password to verify:" 8 55)
+
+            if [ -z "$input" ]; then
+              dialog --title "ERROR: Empty Password" \
+                --msgbox "You are not allowed to have an empty password." 5 55
+            elif [ "$input" != "$confirm_input" ]; then
+              dialog --title "ERROR: Passwords Do No Match" \
+                --msgbox "The two passwords you entered did not match." 5 55
+            else
+              user_passwd="$input"
+              inputs_match=true
+            fi
+          done
+          break
+        fi
+      else
+        dialog --title "ERROR: Invalid Username Format" \
+          --msgbox "You entered an invalid username.\n\nThe username must \
+start with a lower-case letter, which can be followed by any combination of \
+numbers, more lower-case letters, or the dash symbol, and must be no more \
+than 32 characters long." 9 80
+      fi
+    fi
+  done
 }
 
 # Prepare the user's selected disk for partitioning
@@ -103,6 +334,7 @@ prepare_disk() {
 
   while true; do
     PARTITION_LAYOUT=$(dialog --title "Partition the Disks" \
+      --cancel-label "Exit to Menu" \
       --menu "The installer will now automatically partition a disk for you. \
 If you have no preference or are unsure about which partition layout to \
 choose, the 'Basic' layout is the simplest and should be enough for most use \
@@ -112,7 +344,7 @@ cases.\n\nPartition layout:" 16 80 3 \
 "Encrypted" "Use entire disk and set up encrypted LVM" 3>&1 1>&2 2>&3)
 
     if [ $? -eq 0 ]; then
-      DISK=$(dialog --title "Set the Installation Disk" \
+      DISK=$(dialog --title "Set the Installation Disk" --cancel-label "Back" \
         --menu "Select the disk for Arch Linux to be installed on. Note that \
 the disk you select will be erased, but not until you have confirmed the \
 changes.\n\nDisk to partition:" 20 55 5 \
@@ -127,7 +359,7 @@ changes.\n\nDisk to partition:" 20 55 5 \
         FILE_SYSTEM=$(dialog --title "Set the Filesystem for $DISK_ROOT" \
           --nocancel --menu "Select the type of filesystem to use for the \
 specified device. If you are unsure, 'ext4' is the default.\n\nFilesystem \
-type:" 18 68 5 \
+type:" 15 68 5 \
 "ext4" "Ext4 journaling filesystem" \
 "ext3" "Ext3 journaling filesystem" \
 "ext2" "Standard Linux Ext2 filesystem" \
@@ -151,7 +383,7 @@ you are unsure, it is recommended to create one." 6 57
             SWAP=$(dialog --title "Allocate Swap Space" \
               --inputbox "Specify how much swap space to allocate. If you are \
 unsure, the default is to have swap space equal to the amount of RAM in your \
-system.\n\nSwap partition size (use 'M' for MiB or 'G' for GiB):" 13 80 \
+system.\n\nSwap partition size (use 'M' for MiB or 'G' for GiB):" 11 80 \
 "$MEM_TOTAL" 3>&1 1>&2 2>&3)
             
             if [ $? -eq 0 ]; then
@@ -183,20 +415,20 @@ space available on the disk. Note that the installer sets aside an additional \
               fi
             else
               swap_enabled=false
-              SWAP="-"
+              SWAP="none"
               break
             fi
           done
         else
           swap_enabled=false
-          SWAP="-"
+          SWAP="none"
         fi
 
-        dialog --title "Confirm Your Partition Layout" --defaultno \
+        dialog --title "Confirm the Partition Layout for $DISK" --defaultno \
           --yesno "WARNING: All data on the selected disk will be lost! Make \
 sure to review your changes before continuing.\n\nDisk to partition: \
 $DISK\nPartition layout: $PARTITION_LAYOUT\nFilesystem type: \
-$FILE_SYSTEM\nSwap partition: $SWAP\n\nAre you sure you want to write the \
+$FILE_SYSTEM\nSwap size: $SWAP\n\nAre you sure you want to write the \
 changes to the disk?" 13 60  
         if [ $? -eq 0 ]; then
           check_device_status
@@ -290,34 +522,34 @@ create_lvm_layout() {
 
 # Set up LUKS on top of the LVM partition for root disk encryption
 create_encrypted_layout() {
-  phrases_match=false
-  while ! $phrases_match; do
-    phrase=$(dialog --title "Encrypt $ROOT_PART" --clear --stdout \
+  inputs_match=false
+  while ! $inputs_match; do
+    input=$(dialog --title "Encrypt $ROOT_PART" --clear --stdout \
       --insecure --passwordbox "Enter a passphrase to encrypt \
 $ROOT_PART.\n\nThe overall strength of the encryption process depends \
 strongly on this passphrase, therefore you should set a passphrase that is \
 not easy to guess.\n\nNote that the passphrase you enter will be required \
-each time on boot.\n\nEncryption passphrase:" 17 80)
+each time on boot.\n\nEncryption passphrase:" 15 80)
 
     if [ $? -eq 0 ]; then
-      confirm_phrase=$(dialog --title "Encrypt $ROOT_PART" --clear --stdout \
+      confirm_input=$(dialog --title "Encrypt $ROOT_PART" --clear --stdout \
         --insecure --passwordbox "Re-enter passphrase to verify:" 8 55)
 
-      if [ -z "$phrase" ]; then
+      if [ -z "$input" ]; then
         dialog --title "ERROR: Empty Passphrase" \
           --msgbox "You are not allowed to have an empty passphrase." 5 55
-      elif [ "$phrase" != "$confirm_phrase" ]; then
+      elif [ "$input" != "$confirm_input" ]; then
         dialog --title "ERROR: Passphrases Do No Match" \
           --msgbox "The two passphrases you entered did not match." 5 55
-      elif [ "${#phrase}" -lt 8 ]; then
+      elif [ "${#input}" -lt 8 ]; then
         dialog --title "WARNING: Weak Passphrase" --defaultno \
           --yesno "The passphrase you entered is less than 8 characters which \
 is considered insecure.\n\nContinue using a weak passphrase?"  8 60
         if [ $? -eq 0 ]; then
-          phrases_match=true
+          inputs_match=true
         fi
       else
-        phrases_match=true
+        inputs_match=true
       fi
     else
       dialog --title "Revert Partition Changes" --defaultno \
@@ -330,8 +562,8 @@ process? If you choose yes, you will be returned to the partition menu." 7 65
   done
 
   CRYPT_DEVICE_NAME="cryptlvm"
-  printf "$phrase" | cryptsetup luksFormat "$ROOT_PART" - &> /dev/null
-  printf "$phrase" | cryptsetup open "$ROOT_PART" "$CRYPT_DEVICE_NAME" -
+  printf "$input" | cryptsetup luksFormat "$ROOT_PART" - &> /dev/null
+  printf "$input" | cryptsetup open "$ROOT_PART" "$CRYPT_DEVICE_NAME" -
   pvcreate -f "/dev/mapper/${CRYPT_DEVICE_NAME}" &> /dev/null
   vgcreate -f "$LVM_GROUP" "/dev/mapper/${CRYPT_DEVICE_NAME}" &> /dev/null
 
@@ -355,24 +587,39 @@ process? If you choose yes, you will be returned to the partition menu." 7 65
 # Menu which allows the user to navigate the installer
 main_menu() {
   while true; do
-    menu_choice=$(dialog --title "Arch Linux Installer Main Menu" \
+    menu_choice=$(dialog --title "Arch Linux Installer Main Menu" --nocancel \
       --menu "Select an option below using the UP/DOWN keys and SPACE or \
-ENTER.\nAlternate keys may also be used: '+', '-', and TAB." 18 72 9 \
-"KEYMAP" "Modify your keyboard layout" \
-"PARTITION" "Set up your disk partitions" \
+ENTER.\nAlternate keys may also be used: '+', '-', and TAB." 17 70 9 \
+"KEYMAP" "Set the keyboard layout" \
+"LOCALE" "Set the system locale" \
+"TIMEZONE" "Set the system time zone" \
+"HOSTNAME" "Set the system's hostname" \
+"ROOT PASSWORD" "Set the root password" \
+"CREATE USER" "Create your user account" \
+"PARTITION" "Partition the installation drive" \
 "EXIT" "Exit Arch Linux Installer" 3>&1 1>&2 2>&3)
 
     case "$menu_choice" in
       "KEYMAP") set_keymap ;;
+      "LOCALE") set_locale ;;
+      "TIMEZONE") set_timezone ;;
+      "HOSTNAME") set_hostname ;;
+      "ROOT PASSWORD") set_root_passwd ;;
+      "CREATE USER") create_user ;;
       "PARTITION") prepare_disk ;;
-      "EXIT") reset ; exit
+      "EXIT") reset ; exit ;;
     esac
   done
 }
 
 main() {
-  check_keymap
   check_connection
+  set_keymap
+  set_locale
+  set_timezone
+  set_hostname
+  set_root_passwd
+  create_user
   prepare_disk
 }
 
