@@ -1,6 +1,7 @@
 # This is a list of reserved usernames used to avoid any conflict when creating a user.
 # https://salsa.debian.org/installer-team/user-setup/raw/master/reserved-usernames
-# # Static users from base-passwd/passwd.master (3.5.41).
+
+# Static users from base-passwd/passwd.master (3.5.41).
 root
 daemon
 bin
