@@ -23,8 +23,16 @@ retry running the installer." 11 80
   fi
 }
 
-# Check if there are any active LVM or crypt devices
+# Unmount all partitions and check if there are any active LVM or crypt devices
 check_device_status() {
+  if mountpoint -q /mnt; then
+    umount -R /mnt
+  fi
+
+  if free | awk '/^Swap:/ {exit !$2}'; then
+    swapoff -a
+  fi
+
   LVM_STATUS=$(lvdisplay | grep "LV Status" | sort -u | awk '{print $3}')
   if [ "$LVM_STATUS" = "available" ]; then
     for vgroup in $(lvdisplay | grep "VG Name" | sort -u | awk '{print $3}');
@@ -459,11 +467,11 @@ create_basic_layout() {
         -t 3:8200 $DISK &> /dev/null
       SWAP_PART="${DISK}${PREFIX}3"
       mkswap $SWAP_PART &> /dev/null
+      swapon $SWAP_PART
     else
       sgdisk -n 1:0:+512M -n 2:0:0 -t 1:ef00 -t 2:8300 $DISK &> /dev/null
     fi
     mkfs.fat -F32 $BOOT_PART &> /dev/null
-    mkfs."$FILE_SYSTEM" $ROOT_PART &> /dev/null
   else
     ROOT_PART="${DISK}${PREFIX}1"
     parted -s $DISK mklabel msdos
@@ -472,14 +480,20 @@ create_basic_layout() {
         fdisk $DISK &> /dev/null
       SWAP_PART="${DISK}${PREFIX}2"
       mkswap $SWAP_PART &> /dev/null
+      swapon $SWAP_PART
     else
       echo -e "n\np\n1\n\n\nw" | fdisk $DISK &> /dev/null
     fi
-
-    case "$FILE_SYSTEM" in
-      btrfs|xfs) mkfs."$FILE_SYSTEM" -f "$ROOT_PART" &> /dev/null ;;
-      *) mkfs."$FILE_SYSTEM" "$ROOT_PART" &> /dev/null ;;
-    esac
+  fi
+  
+  case "$FILE_SYSTEM" in
+    btrfs|xfs) mkfs."$FILE_SYSTEM" -f "$ROOT_PART" &> /dev/null ;;
+    *) mkfs."$FILE_SYSTEM" "$ROOT_PART" &> /dev/null ;;
+  esac
+  mount $ROOT_PART /mnt
+  if [ -d /sys/firmware/efi ]; then
+    mkdir /mnt/boot
+    mount $BOOT_PART /mnt/boot
   fi
 }
 
@@ -490,6 +504,7 @@ create_lvm_layout() {
     ROOT_PART="${DISK}${PREFIX}2"
     parted -s $DISK mklabel gpt
     sgdisk -n 1:0:+512M -n 2:0:0 -t 1:ef00 -t 2:8e00 $DISK &> /dev/null
+    mkfs.fat -F32 $BOOT_PART &> /dev/null
   else
     ROOT_PART="${DISK}${PREFIX}1"
     parted -s $DISK mklabel msdos
@@ -508,15 +523,21 @@ create_lvm_layout() {
       lvcreate -y -L $SWAP $LVM_GROUP -n $LVM_SWAP &> /dev/null 
       lvcreate -y -l 100%FREE $LVM_GROUP -n $LVM_ROOT &> /dev/null 
       mkswap "/dev/${LVM_GROUP}/${LVM_SWAP}" &> /dev/null
+      swapon "/dev/${LVM_GROUP}/${LVM_SWAP}"
     else
       lvcreate -y -l 100%FREE $LVM_GROUP -n $LVM_ROOT &> /dev/null 
     fi
-    
+
     case "$FILE_SYSTEM" in
       btrfs|xfs) mkfs."$FILE_SYSTEM" -f "/dev/${LVM_GROUP}/${LVM_ROOT}" \
                    &> /dev/null ;;
       *) mkfs."$FILE_SYSTEM" "/dev/${LVM_GROUP}/${LVM_ROOT}" &> /dev/null ;; 
     esac
+    mount "/dev/${LVM_GROUP}/${LVM_ROOT}" /mnt
+    if [ -d /sys/firmware/efi ]; then
+      mkdir /mnt/boot
+      mount $BOOT_PART /mnt/boot
+    fi
   fi
 }
 
@@ -572,16 +593,22 @@ process? If you choose yes, you will be returned to the partition menu." 7 65
     lvcreate -y -L $SWAP $LVM_GROUP -n $LVM_SWAP &> /dev/null 
     lvcreate -y -l 100%FREE $LVM_GROUP -n $LVM_ROOT &> /dev/null 
     mkswap "/dev/mapper/${LVM_GROUP}-${LVM_SWAP}" &> /dev/null
+    swapon "/dev/mapper/${LVM_GROUP}-${LVM_SWAP}"
   else
     lvcreate -y -l 100%FREE $LVM_GROUP -n $LVM_ROOT &> /dev/null 
   fi
-  
+
   case "$FILE_SYSTEM" in
     btrfs|xfs) mkfs."$FILE_SYSTEM" -f "/dev/mapper/${LVM_GROUP}-${LVM_ROOT}" \
                  &> /dev/null ;;
     *) mkfs."$FILE_SYSTEM" "/dev/mapper/${LVM_GROUP}-${LVM_ROOT}" \
                  &> /dev/null ;; 
   esac
+  mount "/dev/mapper/${LVM_GROUP}-${LVM_ROOT}" /mnt
+  if [ -d /sys/firmware/efi ]; then
+    mkdir /mnt/boot
+    mount $BOOT_PART /mnt/boot
+  fi
 }
 
 # Menu which allows the user to navigate the installer
