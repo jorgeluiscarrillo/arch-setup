@@ -18,7 +18,7 @@ connection. The installation media supports wired network devices on \
 boot. Make sure the cable is plugged in. Wireless users should use the \
 'wifi-menu' command and follow the on-screen instructions to connect to \
 a wireless connection.\n\nOnce you have a working internet connection, \
-retry running the installer." 11 80
+retry running the installer." 10 80
     reset ; exit
   fi
 }
@@ -611,6 +611,39 @@ process? If you choose yes, you will be returned to the partition menu." 7 65
   fi
 }
 
+# Prompt the user to install the base packages for the system
+install_base_system() {
+  update_mirrorlist
+}
+
+# Use the reflector script to update the pacman mirror list
+update_mirrorlist() {
+  dialog --title "Update the Mirror List" \
+    --yesno "Would you like to update the Arch Linux mirror list?\n\nUpdating \
+the mirror list will speed up the download of packages. If you select no, \
+your download speed may be affected." 8 70
+
+  if [ $? -eq 0 ]; then
+    while true; do
+      if wget -q --spider archlinux.org; then
+        cp /etc/pacman.d/mirrorlist /etc/pacman.d/mirrorlist.backup
+        pacman -Sy --noconfirm reflector &> /dev/null
+        # Sort the 25 most recently synchronized mirrors by download speed
+        reflector --latest 25 --sort rate --save /etc/pacman.d/mirrorlist
+        break
+      else
+        dialog --title "ERROR: No Internet Connection" \
+          --yes-label "Retry" --no-label "Exit Installer" \
+          --yesno "The installer was unable to update the mirror list because \
+no internet connection was detected." 6 55
+        if [ $? -eq 1 ]; then
+          reset ; exit
+        fi
+      fi
+    done
+  fi
+} 
+
 # Menu which allows the user to navigate the installer
 main_menu() {
   while true; do
@@ -648,6 +681,7 @@ main() {
   set_root_passwd
   create_user
   prepare_disk
+  install_base_system
 }
 
 main
