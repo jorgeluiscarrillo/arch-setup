@@ -867,7 +867,11 @@ performance.\n\nGraphics driver:" 15 70 2 \
           if grep -Fq "$gpu_pci_id" "$DIR"/etc/nvidia_390_pci_ids; then
             PACKAGES+=('nvidia-390xx' 'nvidia-390xx-utils' 'nvidia-390xx-settings')
           elif grep -Fq "$gpu_pci_id" "$DIR"/etc/nvidia_340_pci_ids; then
-            PACKAGES+=('nvidia-340xx' 'nvidia-340xx-utils' 'nvidia-340xx-settings')
+            # Support for nvidia-340xx has been dropped, use nouveau
+            dialog --title "Install Graphics Driver" \
+              --msgbox "Proprietary driver support has ended for your graphics \
+card.\n\nThe open-source Nouveau driver will be installed." 7 65
+            PACKAGES+=('xf86-video-nouveau' 'mesa')
           else
             PACKAGES+=('nvidia' 'nvidia-utils' 'nvidia-settings')
           fi
