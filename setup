@@ -429,11 +429,11 @@ $FILE_SYSTEM\nSwap size: $SWAP\n\nAre you sure you want to write the \
 changes to the disk?" 13 60
         if [ $? -eq 0 ]; then
           check_device_status
-          if [ "$PARTITION_LAYOUT" = "Basic" ]; then
-            create_basic_layout
-          else
-            create_lvm_layout
-          fi
+          case "$PARTITION_LAYOUT" in
+            "Basic") create_basic_layout ;;
+            "LVM") create_lvm_layout ;;
+            "Encrypted") create_encrypted_layout ;;
+          esac
           break
         else
           main_menu
@@ -503,36 +503,44 @@ create_lvm_layout() {
 
   LVM_GROUP="arch"
   LVM_ROOT="root"
-  if [ "$PARTITION_LAYOUT" = "Encrypted" ]; then
-    create_encrypted_layout
+  pvcreate -f "$ROOT_PART" &> /dev/null
+  vgcreate -f "$LVM_GROUP" "$ROOT_PART" &> /dev/null
+  if $swap_enabled; then
+    LVM_SWAP="swap"
+    lvcreate -y -L "$SWAP" "$LVM_GROUP" -n "$LVM_SWAP" &> /dev/null
+    lvcreate -y -l 100%FREE "$LVM_GROUP" -n "$LVM_ROOT" &> /dev/null
+    mkswap "/dev/${LVM_GROUP}/${LVM_SWAP}" &> /dev/null
+    swapon "/dev/${LVM_GROUP}/${LVM_SWAP}"
   else
-    pvcreate -f "$ROOT_PART" &> /dev/null
-    vgcreate -f "$LVM_GROUP" "$ROOT_PART" &> /dev/null
-    if $swap_enabled; then
-      LVM_SWAP="swap"
-      lvcreate -y -L "$SWAP" "$LVM_GROUP" -n "$LVM_SWAP" &> /dev/null
-      lvcreate -y -l 100%FREE "$LVM_GROUP" -n "$LVM_ROOT" &> /dev/null
-      mkswap "/dev/${LVM_GROUP}/${LVM_SWAP}" &> /dev/null
-      swapon "/dev/${LVM_GROUP}/${LVM_SWAP}"
-    else
-      lvcreate -y -l 100%FREE "$LVM_GROUP" -n "$LVM_ROOT" &> /dev/null
-    fi
+    lvcreate -y -l 100%FREE "$LVM_GROUP" -n "$LVM_ROOT" &> /dev/null
+  fi
 
-    case "$FILE_SYSTEM" in
-      btrfs|xfs) mkfs."$FILE_SYSTEM" -f "/dev/${LVM_GROUP}/${LVM_ROOT}" \
-                   &> /dev/null ;;
-      *) mkfs."$FILE_SYSTEM" "/dev/${LVM_GROUP}/${LVM_ROOT}" &> /dev/null ;;
-    esac
-    mount "/dev/${LVM_GROUP}/${LVM_ROOT}" /mnt
-    if [ -d /sys/firmware/efi ]; then
-      mkdir /mnt/boot
-      mount "$BOOT_PART" /mnt/boot
-    fi
+  case "$FILE_SYSTEM" in
+    btrfs|xfs) mkfs."$FILE_SYSTEM" -f "/dev/${LVM_GROUP}/${LVM_ROOT}" &> /dev/null ;;
+    *) mkfs."$FILE_SYSTEM" "/dev/${LVM_GROUP}/${LVM_ROOT}" &> /dev/null ;;
+  esac
+  mount "/dev/${LVM_GROUP}/${LVM_ROOT}" /mnt
+  if [ -d /sys/firmware/efi ]; then
+    mkdir /mnt/boot
+    mount "$BOOT_PART" /mnt/boot
   fi
 }
 
 # Set up LUKS on top of the LVM partition for root disk encryption
 create_encrypted_layout() {
+  # /boot is left unencrypted
+  BOOT_PART="${DISK}${PREFIX}1"
+  ROOT_PART="${DISK}${PREFIX}2"
+  if [ -d /sys/firmware/efi ]; then
+    parted -s "$DISK" mklabel gpt
+    sgdisk -n 1:0:+512M -n 2:0:0 -t 1:ef00 -t 2:8e00 "$DISK" &> /dev/null
+    mkfs.fat -F32 "$BOOT_PART" &> /dev/null
+  else
+    parted -s "$DISK" mklabel msdos
+    echo -e "n\np\n1\n\n+512M\nn\np\n2\n\n\nt\n2\n8e\nw" | fdisk "$DISK" &> /dev/null
+    mkfs.ext4 "$BOOT_PART" &> /dev/null
+  fi
+
   inputs_match=false
   while ! $inputs_match; do
     input=$(dialog --title "Encrypt $ROOT_PART" --clear --stdout \
@@ -572,6 +580,8 @@ process? If you choose yes, you will be returned to the partition menu." 7 65
     fi
   done
 
+  LVM_GROUP="arch"
+  LVM_ROOT="root"
   CRYPT_DEVICE_NAME="cryptlvm"
   printf "%s" "$input" | cryptsetup luksFormat "$ROOT_PART" - &> /dev/null
   printf "%s" "$input" | cryptsetup open "$ROOT_PART" "$CRYPT_DEVICE_NAME" -
@@ -589,16 +599,12 @@ process? If you choose yes, you will be returned to the partition menu." 7 65
   fi
 
   case "$FILE_SYSTEM" in
-    btrfs|xfs) mkfs."$FILE_SYSTEM" -f "/dev/mapper/${LVM_GROUP}-${LVM_ROOT}" \
-                 &> /dev/null ;;
-    *) mkfs."$FILE_SYSTEM" "/dev/mapper/${LVM_GROUP}-${LVM_ROOT}" \
-                 &> /dev/null ;;
+    btrfs|xfs) mkfs."$FILE_SYSTEM" -f "/dev/mapper/${LVM_GROUP}-${LVM_ROOT}" &> /dev/null ;;
+    *) mkfs."$FILE_SYSTEM" "/dev/mapper/${LVM_GROUP}-${LVM_ROOT}" &> /dev/null ;;
   esac
   mount "/dev/mapper/${LVM_GROUP}-${LVM_ROOT}" /mnt
-  if [ -d /sys/firmware/efi ]; then
-    mkdir /mnt/boot
-    mount "$BOOT_PART" /mnt/boot
-  fi
+  mkdir /mnt/boot
+  mount "$BOOT_PART" /mnt/boot
 }
 
 # Use the reflector script to update the pacman mirror list
@@ -638,6 +644,10 @@ configure_install() {
   # GRUB requires efibootmgr for EFI systems
   if [ -d /sys/firmware/efi ]; then
     PACKAGES+=('efibootmgr')
+  fi
+  
+  if [ "$FILE_SYSTEM" = "btrfs" ]; then
+    PACKAGES+=('btrfs-progs')
   fi
 
   if [ "$architecture" = "x86_64" ]; then
@@ -907,7 +917,9 @@ installed for you." 7 70
       esac
     fi
   fi
+}
 
+install_base() {
   while true; do
     dialog --title "Installation Summary" \
       --yesno "The base system is ready to be installed on $DISK.\nThe \
@@ -915,7 +927,6 @@ following packages will be installed:\n\n${PACKAGES[*]}\n\nInstall Arch \
 Linux?" 0 0
     if [ $? -eq 0 ]; then
       pacstrap /mnt "${PACKAGES[@]}"
-      genfstab -U -p /mnt >> /mnt/etc/fstab
       break
     else
       dialog --title "Cancel Installation" \
@@ -925,6 +936,58 @@ Linux?" 0 0
       fi
     fi
   done
+}
+
+# Apply the user's system settings
+configure_system() {
+  # Generate the fstab file
+  genfstab -U -p /mnt >> /mnt/etc/fstab
+
+  # Set the time zone and adjust the hardware clock to the system time (UTC)
+  ln -sf /usr/share/zoneinfo/"$ZONE" /mnt/etc/localtime
+  arch-chroot /mnt hwclock --systohc
+
+  # Set locale and keyboard layout if applicable and generate the locales
+  sed -i "s/#en_US.UTF-8/en_US.UTF-8/" /mnt/etc/locale.gen
+  if [ "$LOCALE" != "en_US.UTF-8" ]; then
+    sed -i "s/#$LOCALE/$LOCALE/" /mnt/etc/locale.gen
+  fi
+  echo "LANG=$LOCALE" > /mnt/etc/locale.conf
+  if [ "$KEYMAP" != "us" ]; then
+    echo "KEYMAP=$KEYMAP" > /mnt/etc/vconsole.conf
+  fi
+  arch-chroot /mnt locale-gen
+
+  # Set the hostname and add a matching entry to /etc/hosts
+  echo "$HOST_NAME" > /mnt/etc/hostname
+  echo -e "127.0.0.1\tlocalhost\n::1\t\tlocalhost\n127.0.1.1\t$HOST_NAME.localdomain\t$HOST_NAME" >> /mnt/etc/hosts
+  
+  # Modify mkinitcpio.conf hooks if required and generate a new initramfs
+  if [ "$PARTITION_LAYOUT" != "Basic" ]; then
+    if [ "$PARTITION_LAYOUT" = "LVM" ]; then
+      sed -i "s/HOOKS=.*/HOOKS=(base udev autodetect modconf block lvm2 filesystems fsck)/" /mnt/etc/mkinitcpio.conf
+    elif [ "$PARTITION_LAYOUT" = "Encrypted" ]; then
+      sed -i "s/HOOKS=.*/HOOKS=(base udev autodetect keyboard keymap consolefont modconf block encrypt lvm2 filesystems fsck)/" /mnt/etc/mkinitcpio.conf
+    fi
+    arch-chroot /mnt mkinitcpio -p linux
+  fi
+
+  # Append the required kernel parameters to unlock an encrypted partition
+  if [ "$PARTITION_LAYOUT" = "Encrypted" ]; then
+    root_part_uuid=$(blkid -s UUID -o value "$ROOT_PART")
+    sed -i "s/GRUB_CMDLINE_LINUX=\"\(.*\)\"/GRUB_CMDLINE_LINUX=\"\1 cryptdevice=UUID=$root_part_uuid:$CRYPT_DEVICE_NAME root=\/dev\/mapper\/$LVM_GROUP-$LVM_ROOT\"/" /mnt/etc/default/grub
+  fi
+
+  # Install GRUB to the target disk and generate the main configuration file
+  if [ -d /sys/firmware/efi ]; then
+    arch-chroot /mnt grub-install --target=x86_64-efi --efi-directory="$BOOT_PART" --bootloader-id=GRUB
+  else
+    arch-chroot /mnt grub-install --target=i386-pc "$DISK"
+  fi
+  arch-chroot /mnt grub-mkconfig -o /boot/grub/grub.cfg
+
+  # Set the root password
+  arch-chroot /mnt chpasswd <<<"root:$root_passwd"
 }
 
 # Menu which allows the user to navigate the installer
@@ -953,7 +1016,10 @@ ENTER.\nAlternate keys may also be used: '+', '-', and TAB." 18 70 10 \
       "CREATE USER") create_user ;;
       "PARTITION") prepare_disk ;;
       "UPDATE MIRRORS") update_mirrorlist ;;
-      "INSTALLATION") configure_install ;;
+      "INSTALLATION") configure_install
+                      install_base
+                      configure_system
+                      ;;
       "EXIT") reset ; exit ;;
     esac
   done
@@ -970,6 +1036,8 @@ main() {
   prepare_disk
   update_mirrorlist
   configure_install
+  install_base
+  configure_system
 }
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
