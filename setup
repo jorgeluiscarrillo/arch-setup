@@ -644,7 +644,7 @@ configure_install() {
   if [ -d /sys/firmware/efi ]; then
     PACKAGES+=('efibootmgr')
   fi
-  
+
   if [ "$FILE_SYSTEM" = "btrfs" ]; then
     PACKAGES+=('btrfs-progs')
   fi
@@ -818,15 +818,15 @@ select no, 'xinit' will be installed so you can manually start Xorg with the\
     if [ $? -eq 0 ]; then
       DM=$(dialog --title "Install a Display Manager" \
           --menu "Select a display manager to install:" 10 50 3 \
-"GDM" "GNOME Display Manager" \
-"LightDM" "Lightweight Display Manager" \
-"SDDM" "Simple Desktop Display Manager" 3>&1 1>&2 2>&3)
+"gdm" "GNOME Display Manager" \
+"lightdm" "Lightweight Display Manager" \
+"sddm" "Simple Desktop Display Manager" 3>&1 1>&2 2>&3)
       if [ $? -eq 0 ]; then
         dm_enabled=true
         case "$DM" in
-          "GDM") PACKAGES+=('gdm') ;;
-          "LightDM") PACKAGES+=('lightdm' 'lightdm-gtk-greeter' 'lightdm-gtk-greeter-settings') ;;
-          "SDDM") PACKAGES+=('sddm') ;;
+          "gdm") PACKAGES+=('gdm') ;;
+          "lightdm") PACKAGES+=('lightdm' 'lightdm-gtk-greeter' 'lightdm-gtk-greeter-settings') ;;
+          "sddm") PACKAGES+=('sddm') ;;
         esac
       else
         PACKAGES+=('xorg-xinit')
@@ -944,7 +944,7 @@ configure_system() {
   # Set the hostname and add a matching entry to /etc/hosts
   echo "$HOST_NAME" > /mnt/etc/hostname
   echo -e "127.0.0.1\tlocalhost\n::1\t\tlocalhost\n127.0.1.1\t$HOST_NAME.localdomain\t$HOST_NAME" >> /mnt/etc/hosts
-  
+
   # Modify mkinitcpio.conf hooks if required and generate a new initramfs
   if [ "$PARTITION_LAYOUT" != "Basic" ]; then
     if [ "$PARTITION_LAYOUT" = "LVM" ]; then
@@ -963,13 +963,13 @@ configure_system() {
 
   # Install GRUB to the target disk and generate the main configuration file
   if [ -d /sys/firmware/efi ]; then
-    arch-chroot /mnt grub-install --target=x86_64-efi --efi-directory="$BOOT_PART" --bootloader-id=GRUB
+    arch-chroot /mnt grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB
   else
     arch-chroot /mnt grub-install --target=i386-pc "$DISK"
   fi
   arch-chroot /mnt grub-mkconfig -o /boot/grub/grub.cfg
 
-  # Set the root password and create the non-administrative user account
+  # Set the root password and create a user account
   arch-chroot /mnt chpasswd <<<"root:$root_passwd"
   # User is added to the 'wheel' group and is granted root privileges with sudo
   if [ -z "$FULL_NAME" ]; then
@@ -992,19 +992,17 @@ configure_system() {
 
   if [ "$DESKTOP" != "None" ] && ! $dm_enabled; then
     echo "$xinit_config" > /mnt/home/"$USER_NAME"/.xinitrc
-  fi
-
-  if $dm_enabled; then
+  elif $dm_enabled; then
     arch-chroot /mnt systemctl enable "$DM".service
   fi
 
   if [ "$hypervisor" != "none" ]; then
-    case "$hypervisor" in
-      "vmware") arch-chroot /mnt systemctl enable vmtoolsd.service
-                arch-chroot /mnt systemctl enable vmware-vmblock-fuse.service
-                ;;
-      "oracle") arch-chroot /mnt systemctl enable vboxservice.service ;;
-    esac
+    if [ "$hypervisor" = "oracle" ]; then
+      arch-chroot /mnt systemctl enable vboxservice.service
+    elif [ "$hypervisor" = "vmware" ]; then
+      arch-chroot /mnt systemctl enable vmtoolsd.service
+      arch-chroot /mnt systemctl enable vmware-vmblock-fuse.service
+    fi
   fi
 }
 
