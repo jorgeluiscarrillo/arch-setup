@@ -641,7 +641,6 @@ configure_install() {
   multilib=false
   PACKAGES=('base' 'base-devel' 'grub' 'networkmanager')
 
-  # GRUB requires efibootmgr for EFI systems
   if [ -d /sys/firmware/efi ]; then
     PACKAGES+=('efibootmgr')
   fi
@@ -661,22 +660,6 @@ system (e.g. wine, steam, etc)." 9 70
     fi
   fi
 
-  shell=$(dialog --title "Select a Command-line Shell" --no-cancel \
-    --menu "Select the command-line shell you wish to use.\nIf you are \
-unsure, 'bash' is installed by default.\n\nShell:" 16 55 6 \
-"bash" "Bourne-again Shell" \
-"dash" "Debian Almquist Shell" \
-"fish" "Friendly Interactive Shell" \
-"mksh" "MirBSD Korn Shell" \
-"tcsh" "TENEX C Shell" \
-"zsh" "Z Shell" 3>&1 1>&2 2>&3)
-
-  if [ "$shell" = "bash" ]; then
-    PACKAGES+=('bash-completion')
-  else
-    PACKAGES+=("$shell")
-  fi
-
   while true; do
     DESKTOP=$(dialog --title "Choose your Graphical Environment" --no-cancel \
       --menu "Select the style of graphical environment you wish to \
@@ -692,7 +675,7 @@ use.\n\nGraphical environment:" 12 75 3 \
 "Budgie" "Modern GNOME based desktop" \
 "Cinnamon" "Traditional desktop experience" \
 "GNOME" "Modern simplicity focused desktop" \
-"KDE Plasma" "Fast and full featured desktop" \
+"KDE Plasma" "Full featured QT based desktop" \
 "LXDE" "Lightweight and efficient desktop" \
 "LXQT" "Lightweight and efficient QT based desktop" \
 "MATE" "Continuation of the GNOME 2 desktop" \
@@ -986,8 +969,43 @@ configure_system() {
   fi
   arch-chroot /mnt grub-mkconfig -o /boot/grub/grub.cfg
 
-  # Set the root password
+  # Set the root password and create the non-administrative user account
   arch-chroot /mnt chpasswd <<<"root:$root_passwd"
+  # User is added to the 'wheel' group and is granted root privileges with sudo
+  if [ -z "$FULL_NAME" ]; then
+    arch-chroot /mnt useradd -m -g users -G wheel -s /bin/bash "$USER_NAME"
+  else
+    arch-chroot /mnt useradd -m -g users -G wheel -c "$FULL_NAME" -s /bin/bash "$USER_NAME"
+  fi
+  arch-chroot /mnt chpasswd <<<"$USER_NAME:$user_passwd"
+  sed -i 's/# %wheel ALL=(ALL) ALL$/%wheel ALL=(ALL) ALL/' /mnt/etc/sudoers
+
+  if $multilib; then
+    sed -i "/\[multilib\]/,/Include/"'s/^#//' /mnt/etc/pacman.conf
+  fi
+
+  arch-chroot /mnt systemctl enable NetworkManager.service
+
+  if $bluetooth_enabled; then
+    arch-chroot /mnt systemctl enable bluetooth.service
+  fi
+
+  if [ "$DESKTOP" != "None" ] && ! $dm_enabled; then
+    echo "$xinit_config" > /mnt/home/"$USER_NAME"/.xinitrc
+  fi
+
+  if $dm_enabled; then
+    arch-chroot /mnt systemctl enable "$DM".service
+  fi
+
+  if [ "$hypervisor" != "none" ]; then
+    case "$hypervisor" in
+      "vmware") arch-chroot /mnt systemctl enable vmtoolsd.service
+                arch-chroot /mnt systemctl enable vmware-vmblock-fuse.service
+                ;;
+      "oracle") arch-chroot /mnt systemctl enable vboxservice.service ;;
+    esac
+  fi
 }
 
 # Menu which allows the user to navigate the installer
