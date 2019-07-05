@@ -181,8 +181,10 @@ region specific information. If you are unsure, the default is \
 set_timezone() {
   utc_enabled=true
   regions=()
-  for region in $(find /usr/share/zoneinfo -mindepth 1 -maxdepth 1 -type d \
-    ! -path "*posix" ! -path "*right" -printf '%f\n' | sort); do
+  for region in \
+    $(find /usr/share/zoneinfo -mindepth 1 -maxdepth 1 -type d -printf '%f\n' \
+    | grep -E -v '/$|posix|right' \
+    | sort); do
     regions+=("$region" "")
   done
   regions+=("other" "")
@@ -195,8 +197,9 @@ set_timezone() {
 
     if [ "$ZONE" != "other" ]; then
       zone_regions=()
-      for zone_region in $(find /usr/share/zoneinfo/"${ZONE}" \
-        -mindepth 1 -maxdepth 1 -printf '%f\n' | sort); do
+      for zone_region in \
+        $(find /usr/share/zoneinfo/"${ZONE}" -mindepth 1 -maxdepth 1 -printf '%f\n' \
+        | sort); do
         zone_regions+=("$zone_region" "")
       done
       SUBZONE=$(dialog --title "Set the Time Zone" --cancel-label "Back" \
@@ -205,8 +208,9 @@ set_timezone() {
       if [ $? -eq 0 ]; then
         if [ -d /usr/share/zoneinfo/"${ZONE}/${SUBZONE}" ]; then
           subzone_regions=()
-          for subzone_region in $(find /usr/share/zoneinfo/"${ZONE}/${SUBZONE}" \
-            -mindepth 1 -maxdepth 1 -printf '%f\n' | sort); do
+          for subzone_region in \
+            $(find /usr/share/zoneinfo/"${ZONE}/${SUBZONE}" -mindepth 1 -maxdepth 1 -printf '%f\n' \
+            | sort); do
             subzone_regions+=("$subzone_region" "")
           done
           SUBZONE_SUBREGION=$(dialog --title "Set the Time Zone" \
@@ -677,7 +681,7 @@ your download speed may be affected." 8 70
     dialog --infobox "Installing reflector..." 3 50
     pacman -Sy --noconfirm reflector &> /dev/null
     dialog --infobox "Updating pacman mirror list..." 3 50
-    # Sort the 25 most recently synchronized mirrors by download speed
+    # Sort the 50 most recently synchronized mirrors by download speed
     reflector --latest 50 --sort rate --save /etc/pacman.d/mirrorlist
   fi
 }
@@ -1051,8 +1055,11 @@ configure_system() {
   arch-chroot /mnt chpasswd <<<"$USER_NAME:$user_passwd"
   sed -i 's/# %wheel ALL=(ALL) ALL$/%wheel ALL=(ALL) ALL/' /mnt/etc/sudoers
 
+  # Uncomment multilib in pacman.conf and refresh the database
   if $multilib; then
     sed -i "/\[multilib\]/,/Include/"'s/^#//' /mnt/etc/pacman.conf
+    dialog --infobox "Refreshing pacman database..." 3 50
+    arch-chroot /mnt pacman -Sy &> /dev/null
   fi
 
   dialog --infobox "Enabling NetworkManager service..." 3 50
@@ -1063,6 +1070,7 @@ configure_system() {
     arch-chroot /mnt systemctl enable bluetooth.service &> /dev/null
   fi
 
+  # xinitrc is created in user's home directory if display manager is not set
   if [ "$DESKTOP" != "None" ] && ! $dm_enabled; then
     dialog --infobox "Generating the xinitrc file..." 3 50
     echo "$xinit_config" > /mnt/home/"$USER_NAME"/.xinitrc
@@ -1094,6 +1102,7 @@ system to boot Arch.\n\nPlease select one of the following options:" 13 60 3 \
 "Poweroff" "Poweroff system" \
 "Exit" "Unmount system and exit to CLI" 3>&1 1>&2 2>&3)
 
+      dialog --infobox "Unmounting partitions on /mnt..." 3 50
       umount -R /mnt
       case "$choice" in
         "Reboot") reset ; reboot ; exit ;;
