@@ -894,7 +894,12 @@ installer will create a xinitrc file for you.\n\nYou will need to use the \
 'startx' command to start the graphical environment once you login." 9 57
     fi
 
+    # Intel/AMD/NVIDIA drivers are not installed on virtual machines
     if [ "$hypervisor" = "none" ]; then
+      if lspci | grep "VGA" | grep -iq "Intel"; then
+        DESKTOP_PACKAGES+=('xf86-video-intel')
+      fi
+
       if lspci | grep "VGA" | grep -iq "NVIDIA"; then
         gpu_driver=$(dialog --title "Install Graphics Driver" --no-cancel \
           --menu "The installer has detected an NVIDIA graphics card on your \
