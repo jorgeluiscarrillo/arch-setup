@@ -12,9 +12,9 @@ keep the installation process as user friendly as possible.
 ### Prerequisites
 
 * Bootable installation media
-  * First, [download](https://www.archlinux.org/download/) the latest Arch ISO. Then, follow the instructions to [create a bootable device](https://wiki.archlinux.org/index.php/USB_flash_installation_media).
+  * First, [download](https://www.archlinux.org/download/) the latest Arch ISO. Then, follow the instructions to [create a bootable device](https://wiki.archlinux.org/index.php/USB_flash_installation_media)
 * Working internet connection
-  * If you require a wireless connection, use the `wifi-menu` command to connect to a network.
+  * If you require a wireless connection, use the `wifi-menu` command to connect to a network
 
 ### Downloading and Running the Script
 
@@ -39,15 +39,15 @@ of Linux experience.
   * Full disk partitioning with LVM and root disk encryption (LVM on LUKS)
 
 * Networking
-  * NetworkManager: Provides detection and configuration to automatically connect to a network.
-  * nm-applet: GUI front-end for NetworkManager.
+  * NetworkManager: Provides detection and configuration to automatically connect to a network
+  * nm-applet: GUI front-end for NetworkManager
 
 * Boot loader
-  * GRUB: Provides support for BIOS/UEFI systems and most file systems.
+  * GRUB: Provides support for BIOS/UEFI systems and most file systems
 
 ### Desktop Environment and Window Managers
 
-Users may choose to install a complete desktop environment or a minimal window manager.
+Users may choose to install a complete desktop environment or a minimal window manager
 
 * Desktop Environments
   * Budgie
