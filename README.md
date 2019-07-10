@@ -20,7 +20,7 @@ process as user friendly as possible.
 1. Install git: `pacman -Sy git`
   * If you encounter `error: not enough free disk space`, then increase cowspace:
 
-  `mount -o remount,size=1G /run/archiso/cowspace`
+    `mount -o remount,size=1G /run/archiso/cowspace`
 
 2. Clone this repository: `git clone https://github.com/jorgeluiscarrillo/arch-setup.git`
 3. Run the script: `cd setup/ && ./setup`
