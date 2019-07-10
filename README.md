@@ -64,10 +64,6 @@ Users may choose to install a complete desktop environment or a minimal window m
   * i3
   * Openbox
   * xmonad
-* Login Display Managers
-  * GDM
-  * LightDM
-  * SDDM
 
 ### Graphics Drivers and Virtual Machine Support
 
