@@ -20,7 +20,7 @@ keep the installation process as user friendly as possible.
 
 ### Downloading and Running the Script
 
-1. Install git: `pacman -Sy git`
+1. Once you have booted into the live media, install git: `pacman -Sy git`
    * If you encounter `error: not enough free disk space`, then increase cowspace:
 
      `mount -o remount,size=1G /run/archiso/cowspace`
