@@ -48,7 +48,7 @@ check_lvm_status() {
       --yesno "A volume group ($vg_on_pv) was detected on the selected disk \
 ($DISK).\n\nIn order to proceed, the volume group ($vg_on_pv) needs to be \
 removed and all data will be lost!\n\nAre you sure you want to remove the \
-volume group '$vg_on_pv'?" 10 75
+volume group '$vg_on_pv'?" 11 75
     if [ $? -eq 0 ]; then
       dialog --infobox "Removing $vg_on_pv from $DISK..." 3 50
       vgchange -y -an "$vg_on_pv" &> /dev/null
@@ -69,7 +69,7 @@ use and backup any data on the volume group before running the installer." 8 80
         --yesno "A volume group with the name '$LVM_GROUP' already exists on \
 your system.\n\nIn order to proceed, the volume group ($LVM_GROUP) needs to be \
 overwritten and all data will be lost!\n\nAre you sure you want to overwrite \
-the volume group '$LVM_GROUP'?" 10 80
+the volume group '$LVM_GROUP'?" 11 80
       if [ $? -eq 0 ]; then
         dialog --infobox "Removing $LVM_GROUP from $DISK..." 3 50
         vgchange -y -an "$LVM_GROUP" &> /dev/null
@@ -899,11 +899,11 @@ installer will create a xinitrc file for you.\n\nYou will need to use the \
         gpu_driver=$(dialog --title "Install Graphics Driver" --no-cancel \
           --menu "The installer has detected an NVIDIA graphics card on your \
 system.\n\nYou may choose to install either the open-source or proprietary \
-driver. If you are unsure, the proprietary driver offers the best \
-performance.\n\nGraphics driver:" 15 70 2 \
+driver. If you are unsure, the proprietary driver usually offers the best \
+performance.\n\nGraphics driver:" 16 70 3 \
 "NVIDIA" "Proprietary NVIDIA driver" \
-"Nouveau" "Open-source Nouveau driver" 3>&1 1>&2 2>&3)
-
+"Nouveau" "Open-source Nouveau driver" \
+"None" "-" 3>&1 1>&2 2>&3)
         if [ "$gpu_driver" = "NVIDIA" ]; then
           # Get only the GPU PCI device ID
           gpu_pci_id=$(lspci -nn  | grep -ioP 'VGA.*NVIDIA.*\[\K[\w:]+' | sed 's/.*://')
@@ -929,9 +929,10 @@ system.\nThe appropriate driver to install depends on how modern your GPU \
 is.\n\nIf you are unsure, the ATI driver is generally more stable and \
 supports the majority of ATI/AMD GPUs. If you have one of the latest AMD GPUs \
 (Volcanic Islands or newer), then you should install the AMDGPU \
-driver.\n\nGraphics driver:" 16 75 2 \
+driver.\n\nGraphics driver:" 17 75 3 \
 "ATI" "Open-source ATI/AMD Radeon driver" \
-"AMDGPU" "Open-source driver for the latest AMD GPUs" 3>&1 1>&2 2>&3)
+"AMDGPU" "Open-source driver for the latest AMD GPUs" \
+"None" "-" 3>&1 1>&2 2>&3)
         if [ "$gpu_driver" = "ATI" ]; then
           DESKTOP_PACKAGES+=('xf86-video-ati' 'mesa')
         else
