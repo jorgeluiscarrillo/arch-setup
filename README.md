@@ -1,13 +1,13 @@
 # arch-setup
 
-arch-setup is a console menu based install script for Arch Linux.
+arch-setup is a console menu based (TUI) install script for Arch Linux.
 
 The goal of this project is to provide a "Debian-like" install experience for new users interested
 in Arch Linux. Nearly every aspect of the install process is configurable by the installer. However,
 when it comes to more complicated aspects such as partitioning, the installer uses sane defaults to
 keep the installation process as user friendly as possible.
 
-![preview](http://giphy.com/go/ZWVmNjFjYzct)
+![preview](https://media.giphy.com/media/kGQ5M2i1oVTk3I1t4o/giphy.gif)
 
 ## Usage
 
