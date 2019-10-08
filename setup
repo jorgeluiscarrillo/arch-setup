@@ -697,8 +697,16 @@ configure_install() {
     DESKTOP_PACKAGES+=('efibootmgr')
   fi
 
+  if [ "$PARTITION_LAYOUT" = "LVM" ]; then
+    DESKTOP_PACKAGES+=('lvm2')
+  elif [ "$PARTITION_LAYOUT" = "Encrypted" ]; then
+    DESKTOP_PACKAGES+=('lvm2' 'cryptsetup')
+  fi
+
   if [ "$FILE_SYSTEM" = "btrfs" ]; then
     DESKTOP_PACKAGES+=('btrfs-progs')
+  elif [ "$FILE_SYSTEM" = "xfs" ]; then
+    DESKTOP_PACKAGES+=('xfsprogs')
   fi
 
   if [ "$architecture" = "x86_64" ]; then
@@ -967,7 +975,7 @@ following packages will be installed:\n\n${BASE_PACKAGES[*]} \
 ${DESKTOP_PACKAGES[*]}\n\nInstall Arch Linux?" 0 0
     if [ $? -eq 0 ]; then
       clear
-      pacstrap /mnt "${BASE_PACKAGES[@]}" "${DESKTOP_PACKAGES[@]}"
+      pacstrap /mnt "${BASE_PACKAGES[@]}" "${BASE_EXTRAS[@]}" "${DESKTOP_PACKAGES[@]}"
       if [ $? -eq 0 ]; then
         installed=true
       else
