@@ -20,9 +20,8 @@ check_connection() {
       --msgbox "The installer was unable to detect a working internet \
 connection. The installation media supports wired network devices on \
 boot. Make sure the cable is plugged in. Wireless users should use the \
-'wifi-menu' command and follow the on-screen instructions to connect to \
-a wireless connection.\n\nOnce you have a working internet connection, \
-retry running the installer." 10 80
+'iwctl' command to connect to a wireless connection.\n\nOnce you have \
+a working internet connection, retry running the installer." 10 80
     reset ; exit 1
   fi
 }
