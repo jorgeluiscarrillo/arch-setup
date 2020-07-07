@@ -15,7 +15,7 @@ ENTER.\nAlternate keys may also be used: '+', '-', and TAB." 7 70
 check_connection() {
   dialog --infobox "Checking internet connection..." 3 50
   # Check if a web page is available
-  if ! wget -q --spider archlinux.org; then
+  if ! nc -zw1 archlinux.org 443; then
     dialog --title "Connect to the Internet" \
       --msgbox "The installer was unable to detect a working internet \
 connection. The installation media supports wired network devices on \
