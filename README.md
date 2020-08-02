@@ -25,7 +25,7 @@ keep the installation process as user friendly as possible.
 
      `mount -o remount,size=1G /run/archiso/cowspace`
 
-2. Clone this repository: `git clone git://github.com/jorgeluiscarrillo/arch-setup`
+2. Clone this repository: `git clone https://github.com/jorgeluiscarrillo/arch-setup`
 3. Run the script: `cd arch-setup/ && ./setup`
 
 ## Features
