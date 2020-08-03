@@ -958,7 +958,7 @@ $hypervisor\n\nAny required drivers or utilities will be \
 installed for you." 7 70
       case "$hypervisor" in
         "vmware") DESKTOP_PACKAGES+=('open-vm-tools' 'xf86-video-vmware' 'xf86-input-vmmouse' 'mesa' 'gtkmm' 'gtkmm3') ;;
-        "oracle") DESKTOP_PACKAGES+=('virtualbox-guest-utils' 'virtualbox-guest-modules-arch') ;;
+        "oracle") DESKTOP_PACKAGES+=('virtualbox-guest-utils' 'virtualbox-guest-dkms') ;;
         "parallels") DESKTOP_PACKAGES+=('xf86-video-vesa') ;;
         *) DESKTOP_PACKAGES+=('xf86-video-fbdev') ;;
       esac
