@@ -971,10 +971,10 @@ install_base() {
     dialog --title "Installation Summary" \
       --yesno "The base system is ready to be installed on $DISK.\nThe \
 following packages will be installed:\n\n${BASE_PACKAGES[*]} \
-${DESKTOP_PACKAGES[*]}\n\nInstall Arch Linux?" 0 0
+${BASE_ESSENTIALS[*]} ${DESKTOP_PACKAGES[*]}\n\nInstall Arch Linux?" 0 0
     if [ $? -eq 0 ]; then
       clear
-      pacstrap /mnt "${BASE_PACKAGES[@]}" "${BASE_EXTRAS[@]}" "${DESKTOP_PACKAGES[@]}"
+      pacstrap /mnt "${BASE_PACKAGES[@]}" "${BASE_ESSENTIALS[@]}" "${DESKTOP_PACKAGES[@]}"
       if [ $? -eq 0 ]; then
         installed=true
       else
