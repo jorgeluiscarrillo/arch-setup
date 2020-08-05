@@ -91,20 +91,16 @@ set_keymap() {
     KEYMAP=$(dialog --title "Set the Keyboard Layout" --nocancel \
       --default-item "us" --menu "Select a keymap that corresponds to your \
 keyboard layout. Choose 'other' if your keymap is not listed. If you are \
-unsure, the default is 'us' (United States/QWERTY).\n\nKeymap:" 28 57 16 \
-"br-abnt2" "Brazilian Portuguese" \
-"cf" "Canadian-French" \
-"colemak" "Colemak (US)" \
-"dvorak" "Dvorak (US)" \
-"fr-latin1" "French" \
-"de-latin1" "German" \
+unsure, the default is 'us' (United States/QWERTY).\n\nKeymap:" 28 57 12 \
+"fr" "French" \
+"de" "German" \
+"el" "Greek" \
+"hu" "Hungarian" \
 "it" "Italian" \
 "jp" "Japanese" \
-"pt-latin9" "Portuguese" \
-"ru4" "Russian" \
+"ru" "Russian" \
 "es" "Spanish" \
-"la-latin1" "Spanish Latinoamerican" \
-"sv-latin1" "Swedish" \
+"sv" "Swedish" \
 "us" "United States" \
 "uk" "United Kingdom" \
 "other" "View all available keymaps" 3>&1 1>&2 2>&3)
@@ -127,6 +123,7 @@ default is 'us' (United States/QWERTY)." 30 60 25 \
   done
   dialog --infobox "Setting keymap to $KEYMAP..." 3 50
   localectl set-keymap "$KEYMAP"
+  loadkeys "$KEYMAP"
 }
 
 # Prompt the user to set the system locale
@@ -1018,6 +1015,9 @@ configure_system() {
   echo "LANG=$LOCALE" > /mnt/etc/locale.conf
   if [ "$KEYMAP" != "us" ]; then
     echo "KEYMAP=$KEYMAP" > /mnt/etc/vconsole.conf
+    if [ "$DESKTOP" != "None" ]; then
+        arch-chroot /mnt localectl set-x11-keymap "$KEYMAP" &> /dev/null
+    fi
   fi
   arch-chroot /mnt locale-gen &> /dev/null
 
