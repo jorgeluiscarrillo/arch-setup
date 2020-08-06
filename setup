@@ -1016,7 +1016,7 @@ configure_system() {
   if [ "$KEYMAP" != "us" ]; then
     echo "KEYMAP=$KEYMAP" > /mnt/etc/vconsole.conf
     if [ "$DESKTOP" != "None" ]; then
-        arch-chroot /mnt localectl set-x11-keymap "$KEYMAP" &> /dev/null
+        echo -e "Section \"InputClass\"\nIdentifier \"system-keyboard\"\nMatchIsKeyboard \"on\"\nOption \"XkbLayout\" \"$KEYMAP\"\nEndSection" > /mnt/etc/X11/xorg.conf.d/00-keyboard.conf
     fi
   fi
   arch-chroot /mnt locale-gen &> /dev/null
