@@ -91,18 +91,16 @@ set_keymap() {
     KEYMAP=$(dialog --title "Set the Keyboard Layout" --nocancel \
       --default-item "us" --menu "Select a keymap that corresponds to your \
 keyboard layout. Choose 'other' if your keymap is not listed. If you are \
-unsure, the default is 'us' (United States/QWERTY).\n\nKeymap:" 24 57 12 \
+unsure, the default is 'us' (United States/QWERTY).\n\nKeymap:" 22 57 10 \
 "fr" "French" \
 "de" "German" \
-"el" "Greek" \
+"gr" "Greek" \
 "hu" "Hungarian" \
 "it" "Italian" \
-"jp" "Japanese" \
+"pl" "Polish" \
 "ru" "Russian" \
 "es" "Spanish" \
-"sv" "Swedish" \
 "us" "United States" \
-"uk" "United Kingdom" \
 "other" "View all available keymaps" 3>&1 1>&2 2>&3)
 
     if [ "$KEYMAP" = "other" ]; then
