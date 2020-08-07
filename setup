@@ -673,12 +673,9 @@ the mirror list will speed up the download of packages. If you select no, \
 your download speed may be affected." 8 70
 
   if [ $? -eq 0 ]; then
-    cp /etc/pacman.d/mirrorlist /etc/pacman.d/mirrorlist.backup
-    dialog --infobox "Installing reflector..." 3 50
-    pacman -Sy --noconfirm reflector &> /dev/null
     dialog --infobox "Updating pacman mirror list..." 3 50
-    # Sort the 50 most recently synchronized mirrors by download speed
-    reflector --latest 50 --sort rate --save /etc/pacman.d/mirrorlist
+    # Sort the 50 most recently synchronized HTTPS mirrors by download speed
+    reflector --latest 50 --protocol https --sort rate --save /etc/pacman.d/mirrorlist
   fi
 }
 
